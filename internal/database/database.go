@@ -1,27 +1,25 @@
 package database
 
-import (
-	"fmt"
-
-	"github.com/aleksander-git/telegram-torrent/internal/torrent"
-)
-
 // заглушка для базы данных
 // в дальнейшем всё перепишется под базу данных
-var (
-	cache = make(map[string]torrent.TorrentList)
-)
+type Database struct {
+	cache map[string]TorrentList
+}
 
-func AddTorrent(userName string, link string) error {
-	t, err := torrent.New(link)
-	if err != nil {
-		return fmt.Errorf("cannot add torrent to database: %w", err)
+func New() *Database {
+	return &Database{
+		cache: make(map[string]TorrentList),
 	}
+}
 
-	cache[userName] = append(cache[userName], t)
+func (db *Database) AddTorrent(userName string, link string) error {
+	db.cache[userName] = append(db.cache[userName], Torrent{
+		Link:   link,
+		Status: InQueue,
+	})
 	return nil
 }
 
-func GetTorrents(userName string) (torrent.TorrentList, error) {
-	return cache[userName], nil
+func (db *Database) GetTorrents(userName string) (TorrentList, error) {
+	return db.cache[userName], nil
 }

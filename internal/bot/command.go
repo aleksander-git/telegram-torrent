@@ -1,11 +1,9 @@
 package bot
 
 import (
-	"errors"
 	"fmt"
 
-	"github.com/aleksander-git/telegram-torrent/internal/database"
-	"github.com/aleksander-git/telegram-torrent/internal/torrent"
+	"github.com/go-bittorrent/magneturi"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -30,6 +28,15 @@ const (
 
 	unavailableAnswer = "Сервер в данный момент не доступен. Повторите запрос позже"
 )
+
+func validateTorrentLink(link string) error {
+	_, err := magneturi.Parse(link)
+	if err != nil {
+		return fmt.Errorf("torrent link %q is invalid: %w", link, err)
+	}
+
+	return nil
+}
 
 func (b *Bot) handleStartCommand(userName string, chatID int64) error {
 	delete(b.usersLastCommand, userName)
@@ -70,9 +77,9 @@ func (b *Bot) handleListTorrentCommand(userName string, chatID int64) error {
 
 	msg := tgbotapi.NewMessage(chatID, "")
 
-	torrents, err := database.GetTorrents(userName)
+	torrents, err := b.db.GetTorrents(userName)
 	if err != nil {
-		b.logger.Error(err.Error())
+		b.logger.Error(fmt.Sprintf("b.handleListTorrentCommand(userName, chatID): cannot get torrents: %s", err))
 		msg.Text = unavailableAnswer
 	} else {
 		msg.Text = torrents.String()
@@ -90,21 +97,18 @@ func (b *Bot) handleListTorrentCommand(userName string, chatID int64) error {
 func (b *Bot) handleAddingNewTorrent(userName string, chatID int64, link string) error {
 	msg := tgbotapi.NewMessage(chatID, "")
 
-	err := database.AddTorrent(userName, link)
-	if err != nil {
-		if errors.As(err, &torrent.TorrentParseError{}) {
-			b.logger.Info(err.Error())
-			msg.Text = "Неверная Magnet-ссылка. Проверьте и отправьте снова"
-		} else {
-			b.logger.Error(err.Error())
-			msg.Text = unavailableAnswer
-		}
+	if err := validateTorrentLink(link); err != nil {
+		b.logger.Info(fmt.Sprintf("b.handleAddingNewTorrent(userName, chatID, link): cannot add new torrent: %s", err))
+		msg.Text = "Неверная Magnet-ссылка. Проверьте и отправьте снова"
+	} else if err := b.db.AddTorrent(userName, link); err != nil {
+		b.logger.Error(fmt.Sprintf("b.handleAddingNewTorrent(userName, chatID, link): cannot add new torrent: %s", err))
+		msg.Text = unavailableAnswer
 	} else {
 		delete(b.usersLastCommand, userName)
 		msg.Text = addedTorrentAnswer
 	}
 
-	_, err = b.botAPI.Send(msg)
+	_, err := b.botAPI.Send(msg)
 	if err != nil {
 		return fmt.Errorf("cannot send answer after adding torrent: %w", err)
 	}
@@ -112,27 +116,51 @@ func (b *Bot) handleAddingNewTorrent(userName string, chatID int64, link string)
 	return nil
 }
 
-func (b *Bot) handleUpdate(update *tgbotapi.Update) error {
-	userName := update.Message.From.UserName
-	chatID := update.Message.Chat.ID
-	message := update.Message.Text
+func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
+	userName := receivedMessage.From.UserName
+	chatID := receivedMessage.Chat.ID
 
-	switch message {
+	switch receivedMessage.Text {
 	case startCommand:
-		return b.handleStartCommand(userName, chatID)
+		err := b.handleStartCommand(userName, chatID)
+		if err != nil {
+			return fmt.Errorf("b.handleStartCommand(userName, chatID): %w", err)
+		}
+
+		return nil
 
 	case helpCommand:
-		return b.handleHelpCommand(userName, chatID)
+		err := b.handleHelpCommand(userName, chatID)
+		if err != nil {
+			return fmt.Errorf("b.handleHelpCommand(userName, chatID): %w", err)
+		}
+
+		return nil
 
 	case newTorrentCommand:
-		return b.handleNewTorrentCommand(userName, chatID)
+		err := b.handleNewTorrentCommand(userName, chatID)
+		if err != nil {
+			return fmt.Errorf("b.handleNewTorrentCommand(userName, chatID): %w", err)
+		}
+
+		return nil
 
 	case listTorrentCommand:
-		return b.handleListTorrentCommand(userName, chatID)
+		err := b.handleListTorrentCommand(userName, chatID)
+		if err != nil {
+			return fmt.Errorf("b.handleListTorrentCommand(userName, chatID): %w", err)
+		}
+
+		return nil
 
 	default:
 		if lastCommand := b.usersLastCommand[userName]; lastCommand == newTorrentCommand {
-			return b.handleAddingNewTorrent(userName, chatID, message)
+			err := b.handleAddingNewTorrent(userName, chatID, receivedMessage.Text)
+			if err != nil {
+				return fmt.Errorf("b.handleAddingNewTorrent(userName, chatID, receivedMessage.Text): %w", err)
+			}
+
+			return nil
 		}
 
 		msg := tgbotapi.NewMessage(chatID, unknownCommandAnswer)

@@ -1,9 +1,24 @@
-package torrent
+package database
 
 import (
 	"fmt"
 	"strings"
 )
+
+const (
+	InQueue     = "в очереди"
+	Downloading = "скачивается"
+	Loaded      = "загружен"
+)
+
+type Torrent struct {
+	Link   string
+	Status string
+}
+
+func (t Torrent) String() string {
+	return fmt.Sprintf("`%s` - %s", t.Link, t.Status)
+}
 
 type TorrentList []Torrent
 
