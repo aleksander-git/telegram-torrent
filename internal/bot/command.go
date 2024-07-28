@@ -79,7 +79,7 @@ func (b *Bot) handleListTorrentCommand(userName string, chatID int64) error {
 
 	torrents, err := b.db.GetTorrents(userName)
 	if err != nil {
-		b.logger.Error(fmt.Sprintf("b.handleListTorrentCommand(userName, chatID): cannot get torrents: %s", err))
+		b.logger.Error(fmt.Sprintf("b.handleListTorrentCommand(%q, %d): %s", userName, chatID, err))
 		msg.Text = unavailableAnswer
 	} else {
 		msg.Text = torrents.String()
@@ -98,10 +98,10 @@ func (b *Bot) handleAddingNewTorrent(userName string, chatID int64, link string)
 	msg := tgbotapi.NewMessage(chatID, "")
 
 	if err := validateTorrentLink(link); err != nil {
-		b.logger.Info(fmt.Sprintf("b.handleAddingNewTorrent(userName, chatID, link): cannot add new torrent: %s", err))
+		b.logger.Error(fmt.Sprintf("b.handleAddingNewTorrent(%q, %d, %q): %s", userName, chatID, link, err))
 		msg.Text = "Неверная Magnet-ссылка. Проверьте и отправьте снова"
 	} else if err := b.db.AddTorrent(userName, link); err != nil {
-		b.logger.Error(fmt.Sprintf("b.handleAddingNewTorrent(userName, chatID, link): cannot add new torrent: %s", err))
+		b.logger.Error(fmt.Sprintf("b.handleAddingNewTorrent(%q, %d, %q): %s", userName, chatID, link, err))
 		msg.Text = unavailableAnswer
 	} else {
 		delete(b.usersLastCommand, userName)
@@ -124,7 +124,7 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 	case startCommand:
 		err := b.handleStartCommand(userName, chatID)
 		if err != nil {
-			return fmt.Errorf("b.handleStartCommand(userName, chatID): %w", err)
+			return fmt.Errorf("b.handleStartCommand(%q, %d): %w", userName, chatID, err)
 		}
 
 		return nil
@@ -132,7 +132,7 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 	case helpCommand:
 		err := b.handleHelpCommand(userName, chatID)
 		if err != nil {
-			return fmt.Errorf("b.handleHelpCommand(userName, chatID): %w", err)
+			return fmt.Errorf("b.handleHelpCommand(%q, %d): %w", userName, chatID, err)
 		}
 
 		return nil
@@ -140,7 +140,7 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 	case newTorrentCommand:
 		err := b.handleNewTorrentCommand(userName, chatID)
 		if err != nil {
-			return fmt.Errorf("b.handleNewTorrentCommand(userName, chatID): %w", err)
+			return fmt.Errorf("b.handleNewTorrentCommand(%q, %d): %w", userName, chatID, err)
 		}
 
 		return nil
@@ -148,7 +148,7 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 	case listTorrentCommand:
 		err := b.handleListTorrentCommand(userName, chatID)
 		if err != nil {
-			return fmt.Errorf("b.handleListTorrentCommand(userName, chatID): %w", err)
+			return fmt.Errorf("b.handleListTorrentCommand(%q, %d): %w", userName, chatID, err)
 		}
 
 		return nil
@@ -157,7 +157,7 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 		if lastCommand := b.usersLastCommand[userName]; lastCommand == newTorrentCommand {
 			err := b.handleAddingNewTorrent(userName, chatID, receivedMessage.Text)
 			if err != nil {
-				return fmt.Errorf("b.handleAddingNewTorrent(userName, chatID, receivedMessage.Text): %w", err)
+				return fmt.Errorf("b.handleAddingNewTorrent(%q, %d, %q): %w", userName, chatID, receivedMessage.Text, err)
 			}
 
 			return nil
