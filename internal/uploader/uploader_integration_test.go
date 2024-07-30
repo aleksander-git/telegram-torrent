@@ -2,6 +2,10 @@ package uploader_test
 
 import (
 	"context"
+	"github.com/aleksander-git/telegram-torrent/internal/gotdclient"
+	"github.com/gotd/td/telegram/message"
+	tduploader "github.com/gotd/td/telegram/uploader"
+	"github.com/gotd/td/tg"
 	stdLog "log"
 	"log/slog"
 	"os"
@@ -47,30 +51,30 @@ func TestUploader_Upload(t *testing.T) {
 		},
 	}
 
+	ctx := context.Background()
+
+	appId, err := strconv.Atoi(os.Getenv("APP_ID"))
+	require.NoError(t, err, "failed to parse APP_ID")
+
+	client := gotdclient.New(appId, os.Getenv("APP_HASH"))
+
+	err = client.Connect(ctx, os.Getenv("BOT_TOKEN"))
+	require.NoError(t, err, "failed to connect to Telegram")
+
+	defer client.Close()
+
+	api := tg.NewClient(client)
+	u := tduploader.NewUploader(api)
+	sender := message.NewSender(api).WithUploader(u)
+
+	uploader := uploader.New(slog.Default(), u, sender)
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test := test
-			t.Parallel()
-
 			// use go test --short to skip uploading of heavy files
 			if testing.Short() && filepath.Ext(test.filePath) != ".txt" {
 				t.Skip()
 			}
-
-			appId, err := strconv.Atoi(os.Getenv("APP_ID"))
-			require.NoError(t, err, "failed to parse APP_ID")
-			uploader, err := uploader.New(context.Background(), slog.Default(), uploader.BotCredentials{
-				BotToken: os.Getenv("BOT_TOKEN"),
-				AppID:    appId,
-				AppHash:  os.Getenv("APP_HASH"),
-			})
-			require.NoError(t, err)
-
-			defer func() {
-				if err := uploader.Close(); err != nil {
-					stdLog.Fatal("uploader.Close(): ", err)
-				}
-			}()
 
 			err = uploader.Upload(context.Background(), test.filePath, test.target)
 			require.NoError(t, err)

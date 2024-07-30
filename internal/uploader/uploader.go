@@ -4,60 +4,46 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/gotd/td/telegram/message/peer"
 	"log/slog"
 	"mime"
 	"path/filepath"
 	"strings"
 	"text/template"
 
-	"github.com/aleksander-git/telegram-torrent/internal/gotdclient"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/message/html"
-	tduploader "github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
 )
 
-type BotCredentials struct {
-	// Token, which you can get when creating a new bot in https://t.me/BotFather
-	BotToken string
+type FileUploader interface {
+	FromPath(ctx context.Context, path string) (tg.InputFileClass, error)
+}
 
-	// AppID and AppHash are need to work with github.com/gotd/td library.
-	// With them a library can use a MTProto API for uploading big files
-	// You can get them after registering a new app on https://my.telegram.org
-	AppID   int
-	AppHash string
+type Resolver interface {
+	Resolve(from string, decorators ...peer.PromiseDecorator) *message.RequestBuilder
 }
 
 type Uploader struct {
 	log *slog.Logger
 
-	client *gotdclient.Client
-
-	uploader *tduploader.Uploader
-	sender   *message.Sender
+	uploader FileUploader
+	resolver Resolver
 
 	messageTemplate string
 }
 
-func New(ctx context.Context, log *slog.Logger, credentials BotCredentials) (*Uploader, error) {
-	client := gotdclient.New(credentials.AppID, credentials.AppHash)
-
-	err := client.Connect(ctx, credentials.BotToken)
-	if err != nil {
-		return nil, fmt.Errorf("client.Connect(ctx, %q): %w", credentials.BotToken[:6], err)
-	}
-
-	api := tg.NewClient(client)
-	uploader := tduploader.NewUploader(api)
-	sender := message.NewSender(api).WithUploader(uploader)
-
+func New(
+	log *slog.Logger,
+	uploader FileUploader,
+	resolver Resolver,
+) *Uploader {
 	return &Uploader{
 		log:             log,
-		client:          client,
 		uploader:        uploader,
-		sender:          sender,
+		resolver:        resolver,
 		messageTemplate: "",
-	}, nil
+	}
 }
 
 // WithMessage adds a default message to an every file sent
@@ -83,7 +69,7 @@ func (u *Uploader) Upload(ctx context.Context, filePath string, targetDomain str
 
 	upload, err := u.uploader.FromPath(ctx, filePath)
 	if err != nil {
-		return fmt.Errorf("Uploader.uploader.FromPath(ctx, %q): %w", filePath, err)
+		return fmt.Errorf("u.uploader.FromPath(ctx, %q): %w", filePath, err)
 	}
 
 	var msg string
@@ -106,20 +92,12 @@ func (u *Uploader) Upload(ctx context.Context, filePath string, targetDomain str
 		document.Video()
 	}
 
-	target := u.sender.Resolve(targetDomain)
+	target := u.resolver.Resolve(targetDomain)
 
 	if _, err := target.Media(ctx, document); err != nil {
 		return fmt.Errorf("failed to send file %q to target %q: %w", filePath, targetDomain, err)
 	}
 
-	return nil
-}
-
-func (u *Uploader) Close() error {
-	err := u.client.Close()
-	if err != nil {
-		return fmt.Errorf("Uploader.client.Close(): %w", err)
-	}
 	return nil
 }
 

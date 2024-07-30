@@ -54,7 +54,11 @@ func (c *Client) Connect(ctx context.Context, botToken string) error {
 }
 
 func (c *Client) Invoke(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
-	return c.Client.Invoke(ctx, input, output)
+	err := c.Client.Invoke(ctx, input, output)
+	if err != nil {
+		return fmt.Errorf("c.Client.Invoke(ctx, input, output): %w", err)
+	}
+	return nil
 }
 
 func (c *Client) Close() error {
