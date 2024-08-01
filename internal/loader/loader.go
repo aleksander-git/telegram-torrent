@@ -2,7 +2,6 @@ package loader
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -13,19 +12,16 @@ import (
 type Loader struct {
 	log *slog.Logger
 
-	client *torrent.Client
+	client TorrentClient
 
 	timeout time.Duration
 }
 
-func New(log *slog.Logger, destPath string, timeout time.Duration) (*Loader, error) {
-	cfg := torrent.NewDefaultClientConfig()
-	cfg.DataDir = destPath
-	client, err := torrent.NewClient(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("torrent.NewClient(&torrent.ClientConfig{DataDir: %q}): %w", destPath, err)
-	}
+type TorrentClient interface {
+	AddMagnet(uri string) (T *torrent.Torrent, err error)
+}
 
+func New(log *slog.Logger, client TorrentClient, timeout time.Duration) (*Loader, error) {
 	return &Loader{
 		log:     log,
 		client:  client,
@@ -37,18 +33,26 @@ func (l *Loader) Load(ctx context.Context, magnetUri string) error {
 	const src = "Loader.Load"
 	log := l.log.With(slog.String("src", src))
 	log.Debug("loading torrent...", slog.String("uri", magnetUri))
-	fmt.Println("loading torrent...", magnetUri)
 
 	t, err := l.client.AddMagnet(magnetUri)
 	if err != nil {
 		return fmt.Errorf("l.client.AddMagnet(%q): %w", magnetUri, err)
 	}
 
-	<-t.GotInfo()
-	t.DownloadAll()
-
 	ctx, cancel := context.WithTimeout(ctx, l.timeout)
 	defer cancel()
+
+	for processing := true; processing ; {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("failed to get info: %w", ctx.Err())
+		case <-t.GotInfo():
+			fmt.Println("got info", t.Info().Length)
+			processing = false
+		}
+	}
+
+	t.DownloadAll()
 
 	totalBytes := t.Info().Length
 	ticker := time.NewTicker(2 * time.Second)
@@ -66,7 +70,6 @@ func (l *Loader) Load(ctx context.Context, magnetUri string) error {
 					slog.String("uri", magnetUri),
 					slog.Int64("size", totalBytes),
 				)
-				fmt.Println("torrent loaded", totalBytes)
 				return nil
 			} else {
 				log.Debug("torrent loading...",
@@ -74,15 +77,7 @@ func (l *Loader) Load(ctx context.Context, magnetUri string) error {
 					slog.Int64("bytesCompleted", bytesCompleted),
 					slog.Int64("totalBytes", totalBytes),
 				)
-				fmt.Printf("loading... %.2f%% (%d/%d)\n", float64(bytesCompleted)/float64(totalBytes)*100, bytesCompleted, totalBytes)
 			}
 		}
 	}
-}
-
-func (l *Loader) Close() error {
-	if errs := l.client.Close(); len(errs) > 0 {
-		return fmt.Errorf("l.client.Close(): %w", errors.Join(errs...))
-	}
-	return nil
 }
