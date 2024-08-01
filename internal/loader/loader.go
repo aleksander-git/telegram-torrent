@@ -29,14 +29,19 @@ func New(log *slog.Logger, client TorrentClient, timeout time.Duration) (*Loader
 	}, nil
 }
 
-func (l *Loader) Load(ctx context.Context, magnetUri string) error {
+func (l *Loader) Load(
+	ctx context.Context,
+	magnetUri string,
+	loadTickInterval time.Duration,
+	onLoadTick func(ctx context.Context, totalBytes, bytesCompleted int64),
+) (bytesSize int64, err error) {
 	const src = "Loader.Load"
 	log := l.log.With(slog.String("src", src))
 	log.Debug("loading torrent...", slog.String("uri", magnetUri))
 
-	t, err := l.client.AddMagnet(magnetUri)
+	torrentFile, err := l.client.AddMagnet(magnetUri)
 	if err != nil {
-		return fmt.Errorf("l.client.AddMagnet(%q): %w", magnetUri, err)
+		return 0, fmt.Errorf("l.client.AddMagnet(%q): %w", magnetUri, err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, l.timeout)
@@ -45,32 +50,36 @@ func (l *Loader) Load(ctx context.Context, magnetUri string) error {
 	for processing := true; processing ; {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("failed to get info: %w", ctx.Err())
-		case <-t.GotInfo():
-			fmt.Println("got info", t.Info().Length)
+			return 0, fmt.Errorf("failed to get info: %w", ctx.Err())
+		case <-torrentFile.GotInfo():
+			fmt.Println("got info", torrentFile.Info().Length)
 			processing = false
 		}
 	}
 
-	t.DownloadAll()
+	torrentFile.DownloadAll()
 
-	totalBytes := t.Info().Length
-	ticker := time.NewTicker(2 * time.Second)
+	totalBytes := torrentFile.Info().Length
+	ticker := time.NewTicker(loadTickInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("file loading failed: %w", ctx.Err())
+			return 0, fmt.Errorf("file loading failed: %w", ctx.Err())
 		case <-ticker.C:
-			bytesCompleted := t.BytesCompleted()
+			bytesCompleted := torrentFile.BytesCompleted()
+
+			if onLoadTick != nil {
+				onLoadTick(ctx, totalBytes, bytesCompleted)
+			}
 
 			if bytesCompleted >= totalBytes {
 				log.Debug("torrent loaded",
 					slog.String("uri", magnetUri),
 					slog.Int64("size", totalBytes),
 				)
-				return nil
+				return totalBytes, nil
 			} else {
 				log.Debug("torrent loading...",
 					slog.Float64("percentage", float64(bytesCompleted)/float64(totalBytes)*100),
