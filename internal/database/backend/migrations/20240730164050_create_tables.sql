@@ -1,5 +1,14 @@
 -- +goose Up
 -- +goose StatementBegin
+CREATE TABLE settings
+(
+  id      BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
+  name    TEXT   NOT NULL,
+  value   INT    NOT NULL,
+  user_id BIGINT DEFAULT NULL,
+  PRIMARY KEY (id)
+);
+
 CREATE TABLE torrent_x_user
 (
   torrent_id BIGINT  NOT NULL,
@@ -43,6 +52,8 @@ ALTER TABLE torrent_x_user
 
 -- +goose Down
 -- +goose StatementBegin
+DROP TABLE settings;
+
 DROP TABLE torrent_x_user;
 
 DROP TABLE torrents;
