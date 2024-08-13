@@ -3,6 +3,7 @@ package bot
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 
 	"github.com/go-bittorrent/magneturi"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -29,7 +30,7 @@ const (
 
 	unavailableAnswer = "Сервер в данный момент не доступен. Повторите запрос позже"
 
-	notSubscribeAnswer = "Для доступа к функциям необходимо подписаться на канал https://t.me/torrent_tbot. Подпишитесь и повторите запрос снова"
+	notSubscribeAnswerTemplate = "Для доступа к функциям необходимо подписаться на канал %s. Подпишитесь и повторите запрос снова"
 )
 
 func validateTorrentLink(link string) error {
@@ -42,14 +43,19 @@ func validateTorrentLink(link string) error {
 }
 
 func (b *Bot) isUserSubscribed(userID int64) (bool, error) {
-	channelID, err := b.db.GetSetting("channel", sql.NullInt64{Valid: false})
+	channelID, err := b.db.GetSetting("channel_id", sql.NullInt64{})
 	if err != nil {
-		return false, fmt.Errorf("b.db.GetSetting(%q, %#v): %w", "channel", sql.NullBool{Valid: false}, err)
+		return false, fmt.Errorf("b.db.GetSetting(%q, %#v): %w", "channel", sql.NullInt64{}, err)
+	}
+
+	id, err := strconv.ParseInt(channelID, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("cannot parse channel_id to int64: %w", err)
 	}
 
 	config := tgbotapi.GetChatMemberConfig{
 		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
-			ChatID: channelID,
+			ChatID: id,
 			UserID: userID,
 		}}
 	chatMember, err := b.botAPI.GetChatMember(config)
@@ -154,8 +160,17 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 	}
 
 	if !subscribed {
-		msg := tgbotapi.NewMessage(chatID, notSubscribeAnswer)
-		_, err := b.botAPI.Send(msg)
+		msg := tgbotapi.NewMessage(chatID, "")
+
+		chatLink, err := b.db.GetSetting("channel_link", sql.NullInt64{})
+		if err != nil {
+			b.logger.Error(fmt.Sprintf("b.db.GetSetting(%q, %#v): %s", "channel_link", sql.NullInt64{}, err))
+			msg.Text = unavailableAnswer
+		} else {
+			msg.Text = fmt.Sprintf(notSubscribeAnswerTemplate, chatLink)
+		}
+
+		_, err = b.botAPI.Send(msg)
 		if err != nil {
 			return fmt.Errorf("cannot send not subscribe answer: %w", err)
 		}

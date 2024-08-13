@@ -4,7 +4,7 @@
   "settings": {
     "width": 2000,
     "height": 2000,
-    "scrollTop": -300,
+    "scrollTop": -523,
     "scrollLeft": -191.6667,
     "zoomLevel": 0.8,
     "show": 511,
@@ -208,7 +208,7 @@
           "widthDefault": 60
         },
         "meta": {
-          "updateAt": 1722930455120,
+          "updateAt": 1723577634554,
           "createAt": 1722361498104
         }
       },
@@ -577,7 +577,7 @@
         "tableId": "cl1QqAu0T_yUNGo1IXnVj",
         "name": "value",
         "comment": "",
-        "dataType": "BIGINT",
+        "dataType": "TEXT",
         "default": "",
         "options": 8,
         "ui": {
@@ -588,7 +588,7 @@
           "widthDefault": 60
         },
         "meta": {
-          "updateAt": 1723570309862,
+          "updateAt": 1723577642344,
           "createAt": 1723120986514
         }
       },
@@ -728,7 +728,7 @@
       -1,
       {
         "name": 1722930443571,
-        "dataType": 1722930450590,
+        "dataType": 1723577634553,
         "options(notNull)": 1722930455120
       }
     ],
@@ -893,7 +893,7 @@
       -1,
       {
         "name": 1723120993381,
-        "dataType": 1723570309862,
+        "dataType": 1723577642343,
         "options(notNull)": 1723121145092
       }
     ],

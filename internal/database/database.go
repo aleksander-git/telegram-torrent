@@ -29,10 +29,14 @@ func (db *Database) GetTorrents(userName string) (TorrentList, error) {
 	return db.cache[userName], nil
 }
 
-func (db *Database) GetSetting(setting string, userID sql.NullInt64) (int64, error) {
-	if setting == "channel" {
-		return -1002184825487, nil
+func (db *Database) GetSetting(setting string, userID sql.NullInt64) (string, error) {
+	if setting == "channel_id" {
+		return "-1002184825487", nil
 	}
 
-	return 0, errors.New("unknown setting")
+	if setting == "channel_link" {
+		return "https://t.me/torrent_tbot", nil
+	}
+
+	return "", errors.New("unknown setting")
 }
