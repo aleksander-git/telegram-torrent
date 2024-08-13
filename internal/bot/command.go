@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"database/sql"
 	"fmt"
 
 	"github.com/go-bittorrent/magneturi"
@@ -27,6 +28,8 @@ const (
 	unknownCommandAnswer = "Неопознанная команда. Что вы хотели сказать?"
 
 	unavailableAnswer = "Сервер в данный момент не доступен. Повторите запрос позже"
+
+	notSubscribeAnswer = "Для доступа к функциям необходимо подписаться на канал https://t.me/torrent_tbot. Подпишитесь и повторите запрос снова"
 )
 
 func validateTorrentLink(link string) error {
@@ -36,6 +39,25 @@ func validateTorrentLink(link string) error {
 	}
 
 	return nil
+}
+
+func (b *Bot) isUserSubscribed(userID int64) (bool, error) {
+	channelID, err := b.db.GetSetting("channel", sql.NullInt64{Valid: false})
+	if err != nil {
+		return false, fmt.Errorf("b.db.GetSetting(%q, %#v): %w", "channel", sql.NullBool{Valid: false}, err)
+	}
+
+	config := tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatID: channelID,
+			UserID: userID,
+		}}
+	chatMember, err := b.botAPI.GetChatMember(config)
+	if err != nil {
+		return false, fmt.Errorf("b.botAPI.GetChatMember(%#v): %w", config, err)
+	}
+
+	return chatMember.Status != "left" && chatMember.Status != "kicked", nil
 }
 
 func (b *Bot) handleStartCommand(userName string, chatID int64) error {
@@ -119,6 +141,27 @@ func (b *Bot) handleAddingNewTorrent(userName string, chatID int64, link string)
 func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 	userName := receivedMessage.From.UserName
 	chatID := receivedMessage.Chat.ID
+	userID := receivedMessage.From.ID
+
+	subscribed, err := b.isUserSubscribed(userID)
+	if err != nil {
+		b.logger.Error(fmt.Sprintf("b.isUserSubscribed(%d): %s", userID, err))
+		msg := tgbotapi.NewMessage(chatID, unavailableAnswer)
+		_, err := b.botAPI.Send(msg)
+		if err != nil {
+			return fmt.Errorf("cannot send bot unavailable message: %w", err)
+		}
+	}
+
+	if !subscribed {
+		msg := tgbotapi.NewMessage(chatID, notSubscribeAnswer)
+		_, err := b.botAPI.Send(msg)
+		if err != nil {
+			return fmt.Errorf("cannot send not subscribe answer: %w", err)
+		}
+
+		return nil
+	}
 
 	switch receivedMessage.Text {
 	case startCommand:

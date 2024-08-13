@@ -4,7 +4,7 @@ CREATE TABLE settings
 (
   id      BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
   name    TEXT   NOT NULL,
-  value   INT    NOT NULL,
+  value   BIGINT NOT NULL,
   user_id BIGINT DEFAULT NULL,
   PRIMARY KEY (id)
 );
