@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+type Setting struct {
+	ID     int64
+	Name   string
+	Value  int32
+	UserID sql.NullInt64
+}
+
 type Torrent struct {
 	ID           int64
 	MessageID    sql.NullInt64

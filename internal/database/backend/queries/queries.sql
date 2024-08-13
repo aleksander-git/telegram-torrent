@@ -88,3 +88,10 @@ INNER JOIN torrent_x_user AS txu
 INNER JOIN users AS u
     ON t.user_id = u.id
 WHERE t.torrent_link = $1 AND u.sent = FALSE;
+
+-- name: GetSetting :one
+SELECT value
+FROM settings
+WHERE name = $1 AND (user_id == $2 OR user_id IS NULL)
+ORDER BY user_id ASC NULLS LAST
+LIMIT 1;

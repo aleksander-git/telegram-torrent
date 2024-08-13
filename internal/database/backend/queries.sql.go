@@ -95,6 +95,26 @@ func (q *Queries) GetFirstUnstartedTorrent(ctx context.Context) (Torrent, error)
 	return i, err
 }
 
+const getSetting = `-- name: GetSetting :one
+SELECT value
+FROM settings
+WHERE name = $1 AND (user_id == $2 OR user_id IS NULL)
+ORDER BY user_id ASC NULLS LAST
+LIMIT 1
+`
+
+type GetSettingParams struct {
+	Name   string
+	UserID sql.NullInt64
+}
+
+func (q *Queries) GetSetting(ctx context.Context, arg GetSettingParams) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getSetting, arg.Name, arg.UserID)
+	var value int32
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getTorrent = `-- name: GetTorrent :one
 SELECT id, message_id, torrent_link, name, size, time_added, time_started, time_finished, error
 FROM torrents
