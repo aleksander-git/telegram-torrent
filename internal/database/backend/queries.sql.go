@@ -108,9 +108,9 @@ type GetSettingParams struct {
 	UserID sql.NullInt64
 }
 
-func (q *Queries) GetSetting(ctx context.Context, arg GetSettingParams) (int32, error) {
+func (q *Queries) GetSetting(ctx context.Context, arg GetSettingParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, getSetting, arg.Name, arg.UserID)
-	var value int32
+	var value string
 	err := row.Scan(&value)
 	return value, err
 }
