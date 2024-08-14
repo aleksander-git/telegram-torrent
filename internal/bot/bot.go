@@ -1,10 +1,11 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
-	"github.com/aleksander-git/telegram-torrent/internal/database"
+	"github.com/aleksander-git/telegram-torrent/internal/database/backend"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -12,10 +13,17 @@ type Bot struct {
 	botAPI           *tgbotapi.BotAPI
 	logger           *slog.Logger
 	usersLastCommand map[string]string
-	db               database.DBInterface
+	db               DBInterface
 }
 
-func New(token string, logger *slog.Logger, db database.DBInterface) (*Bot, error) {
+type DBInterface interface {
+	AddUser(ctx context.Context, arg backend.AddUserParams) error
+	GetUser(ctx context.Context, id int64) (backend.User, error)
+	AddTorrent(ctx context.Context, arg backend.AddTorrentParams) error
+	GetTorrent(ctx context.Context, torrentLink string) (backend.Torrent, error)
+}
+
+func New(token string, logger *slog.Logger, db DBInterface) (*Bot, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get bot API: %w", err)

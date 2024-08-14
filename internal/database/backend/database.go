@@ -1,18 +1,10 @@
 package backend
 
 import (
-	"context"
 	"database/sql"
 
 	_ "github.com/lib/pq"
 )
-
-type DBInterface interface {
-	AddUser(ctx context.Context, arg AddUserParams) error
-	GetUser(ctx context.Context, id int64) (User, error)
-	AddTorrent(ctx context.Context, arg AddTorrentParams) error
-	GetTorrent(ctx context.Context, torrentLink string) (Torrent, error)
-}
 
 type Database struct {
 	*Queries
