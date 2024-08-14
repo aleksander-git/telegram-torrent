@@ -10,7 +10,9 @@ import (
 )
 
 func Run() {
-	tgbot, err := bot.New(os.Getenv("BOT_TOKEN"), slog.Default(), database.New())
+	db := database.New()
+
+	tgbot, err := bot.New(os.Getenv("BOT_TOKEN"), slog.Default(), db)
 	if err != nil {
 		slog.Error(fmt.Sprintf("cannot run bot: %s", err.Error()))
 		os.Exit(1)

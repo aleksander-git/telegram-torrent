@@ -12,10 +12,10 @@ type Bot struct {
 	botAPI           *tgbotapi.BotAPI
 	logger           *slog.Logger
 	usersLastCommand map[string]string
-	db               *database.Database
+	db               database.DatabaseInterface
 }
 
-func New(token string, logger *slog.Logger, db *database.Database) (*Bot, error) {
+func New(token string, logger *slog.Logger, db database.DatabaseInterface) (*Bot, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get bot API: %w", err)

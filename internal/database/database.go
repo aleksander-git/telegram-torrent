@@ -12,6 +12,11 @@ func New() *Database {
 	}
 }
 
+type DatabaseInterface interface {
+	AddTorrent(userName string, link string) error
+	GetTorrents(userName string) (TorrentList, error)
+}
+
 func (db *Database) AddTorrent(userName string, link string) error {
 	db.cache[userName] = append(db.cache[userName], Torrent{
 		Link:   link,
