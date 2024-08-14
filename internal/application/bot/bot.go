@@ -1,21 +1,28 @@
-package bot
+package main
 
 import (
-	"fmt"
+	"log"
 	"log/slog"
 	"os"
 
 	"github.com/aleksander-git/telegram-torrent/internal/bot"
-	"github.com/aleksander-git/telegram-torrent/internal/database"
+	"github.com/aleksander-git/telegram-torrent/internal/database/backend"
 )
 
 func Run() {
-	db := database.New()
+	logger := slog.New(slog.NewTextHandler(log.Writer(), nil))
 
-	tgbot, err := bot.New(os.Getenv("BOT_TOKEN"), slog.Default(), db)
+	// Создаем объект базы данных
+	db, err := backend.NewDatabase(os.Getenv("DATABASE_CONNECTION_STRING"))
 	if err != nil {
-		slog.Error(fmt.Sprintf("cannot run bot: %s", err.Error()))
-		os.Exit(1)
+		logger.Error("unable to create database", "error", err)
+		return
+	}
+
+	tgbot, err := bot.New(os.Getenv("BOT_TOKEN"), logger, db)
+	if err != nil {
+		logger.Error("unable to create bot", "error", err)
+		return
 	}
 
 	tgbot.Start()

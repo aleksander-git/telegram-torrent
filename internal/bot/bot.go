@@ -12,10 +12,10 @@ type Bot struct {
 	botAPI           *tgbotapi.BotAPI
 	logger           *slog.Logger
 	usersLastCommand map[string]string
-	db               database.DatabaseInterface
+	db               database.DBInterface
 }
 
-func New(token string, logger *slog.Logger, db database.DatabaseInterface) (*Bot, error) {
+func New(token string, logger *slog.Logger, db database.DBInterface) (*Bot, error) {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get bot API: %w", err)
@@ -44,7 +44,7 @@ func (b *Bot) Start() {
 
 	for update := range updates {
 		if update.Message != nil {
-			b.logger.Info("receive message %q from %q", update.Message.Text, update.Message.From.UserName)
+			b.logger.Info("received message %q from %q", update.Message.Text, update.Message.From.UserName)
 
 			err := b.handleMessage(update.Message)
 			if err != nil {
