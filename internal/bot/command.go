@@ -1,10 +1,12 @@
 package bot
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"strconv"
+	"time"
 
+	"github.com/aleksander-git/telegram-torrent/internal/database/backend"
 	"github.com/go-bittorrent/magneturi"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -38,14 +40,14 @@ func validateTorrentLink(link string) error {
 	if err != nil {
 		return fmt.Errorf("torrent link %q is invalid: %w", link, err)
 	}
-
 	return nil
 }
 
 func (b *Bot) isUserSubscribed(userID int64) (bool, error) {
-	channelID, err := b.db.GetSetting("channel_id", sql.NullInt64{})
+	ctx := context.Background()
+	channelID, err := b.db.GetSetting(ctx, "channel_id")
 	if err != nil {
-		return false, fmt.Errorf("b.db.GetSetting(%q, %#v): %w", "channel", sql.NullInt64{}, err)
+		return false, fmt.Errorf("b.db.GetSetting(%q): %w", "channel_id", err)
 	}
 
 	id, err := strconv.ParseInt(channelID, 10, 64)
@@ -105,12 +107,13 @@ func (b *Bot) handleListTorrentCommand(userName string, chatID int64) error {
 
 	msg := tgbotapi.NewMessage(chatID, "")
 
-	torrents, err := b.db.GetTorrents(userName)
+	ctx := context.Background()
+	torrents, err := b.db.GetTorrents(ctx)
 	if err != nil {
 		b.logger.Error(fmt.Sprintf("b.handleListTorrentCommand(%q, %d): %s", userName, chatID, err))
 		msg.Text = unavailableAnswer
 	} else {
-		msg.Text = torrents.String()
+		msg.Text = torrentsToString(torrents)
 		msg.ParseMode = "Markdown"
 	}
 
@@ -128,12 +131,19 @@ func (b *Bot) handleAddingNewTorrent(userName string, chatID int64, link string)
 	if err := validateTorrentLink(link); err != nil {
 		b.logger.Error(fmt.Sprintf("b.handleAddingNewTorrent(%q, %d, %q): %s", userName, chatID, link, err))
 		msg.Text = "Неверная Magnet-ссылка. Проверьте и отправьте снова"
-	} else if err := b.db.AddTorrent(userName, link); err != nil {
-		b.logger.Error(fmt.Sprintf("b.handleAddingNewTorrent(%q, %d, %q): %s", userName, chatID, link, err))
-		msg.Text = unavailableAnswer
 	} else {
-		delete(b.usersLastCommand, userName)
-		msg.Text = addedTorrentAnswer
+		ctx := context.Background()
+		addTorrentParams := backend.AddTorrentParams{
+			TorrentLink: link,
+			TimeAdded:   time.Now(),
+		}
+		if err := b.db.AddTorrent(ctx, addTorrentParams); err != nil {
+			b.logger.Error(fmt.Sprintf("b.handleAddingNewTorrent(%q, %d, %q): %s", userName, chatID, link, err))
+			msg.Text = unavailableAnswer
+		} else {
+			delete(b.usersLastCommand, userName)
+			msg.Text = addedTorrentAnswer
+		}
 	}
 
 	_, err := b.botAPI.Send(msg)
@@ -162,9 +172,10 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 	if !subscribed {
 		msg := tgbotapi.NewMessage(chatID, "")
 
-		chatLink, err := b.db.GetSetting("channel_link", sql.NullInt64{})
+		ctx := context.Background()
+		chatLink, err := b.db.GetSetting(ctx, "channel_link")
 		if err != nil {
-			b.logger.Error(fmt.Sprintf("b.db.GetSetting(%q, %#v): %s", "channel_link", sql.NullInt64{}, err))
+			b.logger.Error(fmt.Sprintf("b.db.GetSetting(%q): %s", "channel_link", err))
 			msg.Text = unavailableAnswer
 		} else {
 			msg.Text = fmt.Sprintf(notSubscribeAnswerTemplate, chatLink)
@@ -229,4 +240,12 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 
 		return nil
 	}
+}
+
+func torrentsToString(torrents []backend.Torrent) string {
+	result := ""
+	for _, torrent := range torrents {
+		result += fmt.Sprintf("Name: %s\n", torrent.Name.String)
+	}
+	return result
 }

@@ -1,14 +1,13 @@
 package backend
 
 import (
+	"context"
 	"database/sql"
-
-	_ "github.com/lib/pq"
 )
 
 type Database struct {
-	*Queries
-	db *sql.DB
+	db      *sql.DB
+	Queries *Queries // Ваша сгенерированная структура запросов
 }
 
 func NewDatabase(connectionString string) (*Database, error) {
@@ -21,4 +20,28 @@ func NewDatabase(connectionString string) (*Database, error) {
 		Queries: New(db),
 		db:      db,
 	}, nil
+}
+
+func (d *Database) AddUser(ctx context.Context, arg AddUserParams) error {
+	return d.Queries.AddUser(ctx, arg)
+}
+
+func (d *Database) GetUser(ctx context.Context, id int64) (User, error) {
+	return d.Queries.GetUser(ctx, id)
+}
+
+func (d *Database) AddTorrent(ctx context.Context, arg AddTorrentParams) error {
+	return d.Queries.AddTorrent(ctx, arg)
+}
+
+func (d *Database) GetTorrent(ctx context.Context, torrentLink string) (Torrent, error) {
+	return d.Queries.GetTorrent(ctx, torrentLink)
+}
+
+func (d *Database) GetTorrents(ctx context.Context) ([]Torrent, error) {
+	return d.Queries.GetUserTorrents(ctx, 0)
+}
+
+func (d *Database) GetSetting(ctx context.Context, key string) (string, error) {
+	return d.Queries.GetSetting(ctx, GetSettingParams{})
 }
