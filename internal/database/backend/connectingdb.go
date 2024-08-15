@@ -3,11 +3,13 @@ package backend
 import (
 	"context"
 	"database/sql"
+
+	_ "github.com/lib/pq"
 )
 
 type Database struct {
-	db      *sql.DB
 	Queries *Queries
+	db      *sql.DB
 }
 
 func NewDatabase(connectionString string) (*Database, error) {
@@ -16,10 +18,20 @@ func NewDatabase(connectionString string) (*Database, error) {
 		return nil, err
 	}
 
+	// Проверка соединения с базой данных
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+
 	return &Database{
 		Queries: New(db),
 		db:      db,
 	}, nil
+}
+
+// Метод для закрытия соединения с базой данных
+func (d *Database) Close() error {
+	return d.db.Close()
 }
 
 func (d *Database) AddUser(ctx context.Context, arg AddUserParams) error {
