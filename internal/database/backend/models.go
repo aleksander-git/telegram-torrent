@@ -12,7 +12,7 @@ import (
 type Setting struct {
 	ID     int64
 	Name   string
-	Value  int32
+	Value  string
 	UserID sql.NullInt64
 }
 
