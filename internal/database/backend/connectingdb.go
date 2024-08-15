@@ -7,7 +7,7 @@ import (
 
 type Database struct {
 	db      *sql.DB
-	Queries *Queries // Ваша сгенерированная структура запросов
+	Queries *Queries
 }
 
 func NewDatabase(connectionString string) (*Database, error) {
