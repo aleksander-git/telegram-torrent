@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/gotd/td/telegram/message/peer"
 	"log/slog"
 	"mime"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/message/html"
+	"github.com/gotd/td/telegram/message/peer"
 	"github.com/gotd/td/tg"
 )
 
@@ -59,7 +59,7 @@ func (u *Uploader) WithMessage(messageTemplate string) *Uploader {
 
 // Upload uploads file located on the filePath to the Telegram server
 // and sends it to targetDomain (channel name or username)
-func (u *Uploader) Upload(ctx context.Context, filePath string, targetDomain string) (err error) {
+func (u *Uploader) Upload(ctx context.Context, filePath string, targetDomain string) (messageID int64, err error) {
 	const src = "Uploader.Upload"
 	log := u.log.With(
 		slog.String("src", src),
@@ -69,14 +69,14 @@ func (u *Uploader) Upload(ctx context.Context, filePath string, targetDomain str
 
 	upload, err := u.uploader.FromPath(ctx, filePath)
 	if err != nil {
-		return fmt.Errorf("u.uploader.FromPath(ctx, %q): %w", filePath, err)
+		return 0, fmt.Errorf("u.uploader.FromPath(ctx, %q): %w", filePath, err)
 	}
 
 	var msg string
 	if u.messageTemplate != "" {
 		msg, err = parseMessageTemplate(u.messageTemplate, filePath)
 		if err != nil {
-			return fmt.Errorf("parseMessageTemplate(%q, %q): %w", u.messageTemplate, filePath, err)
+			return 0, fmt.Errorf("parseMessageTemplate(%q, %q): %w", u.messageTemplate, filePath, err)
 		}
 	}
 
@@ -94,11 +94,23 @@ func (u *Uploader) Upload(ctx context.Context, filePath string, targetDomain str
 
 	target := u.resolver.Resolve(targetDomain)
 
-	if _, err := target.Media(ctx, document); err != nil {
-		return fmt.Errorf("failed to send file %q to target %q: %w", filePath, targetDomain, err)
+	updates, err := target.Media(ctx, document)
+	if err != nil {
+		return 0, fmt.Errorf("failed to send file %q to target %q: %w", filePath, targetDomain, err)
 	}
 
-	return nil
+	switch updates := updates.(type) {
+	case *tg.Updates:
+		for _, update := range updates.Updates {
+			if updateNewMessage, ok := update.(*tg.UpdateNewMessage); ok {
+				return int64(updateNewMessage.Message.GetID()), nil
+			}
+		}
+	case *tg.UpdateShortSentMessage:
+		return int64(updates.ID), nil
+	}
+
+	return 0, fmt.Errorf("failed to get message ID from updates")
 }
 
 func parseMessageTemplate(messageTemplate, filePath string) (str string, err error) {
