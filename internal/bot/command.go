@@ -45,7 +45,7 @@ func validateTorrentLink(link string) error {
 
 func (b *Bot) isUserSubscribed(userID int64) (bool, error) {
 	ctx := context.Background()
-	channelID, err := b.db.GetSetting(ctx, "channel_id")
+	channelID, err := b.db.GetSetting(ctx, userID, "channel_id")
 	if err != nil {
 		return false, fmt.Errorf("b.db.GetSetting(%q): %w", "channel_id", err)
 	}
@@ -102,13 +102,13 @@ func (b *Bot) handleNewTorrentCommand(userName string, chatID int64) error {
 	return nil
 }
 
-func (b *Bot) handleListTorrentCommand(userName string, chatID int64) error {
+func (b *Bot) handleListTorrentCommand(userName string, chatID int64, userID int64) error {
 	delete(b.usersLastCommand, userName)
 
 	msg := tgbotapi.NewMessage(chatID, "")
 
 	ctx := context.Background()
-	torrents, err := b.db.GetTorrents(ctx)
+	torrents, err := b.db.GetTorrents(ctx, userID)
 	if err != nil {
 		b.logger.Error(fmt.Sprintf("b.handleListTorrentCommand(%q, %d): %s", userName, chatID, err))
 		msg.Text = unavailableAnswer
@@ -173,9 +173,9 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 		msg := tgbotapi.NewMessage(chatID, "")
 
 		ctx := context.Background()
-		chatLink, err := b.db.GetSetting(ctx, "channel_link")
+		chatLink, err := b.db.GetSetting(ctx, userID, "channel_link")
 		if err != nil {
-			b.logger.Error(fmt.Sprintf("b.db.GetSetting(%q): %s", "channel_link", err))
+			b.logger.Error(fmt.Sprintf("b.db.GetSetting(%d, %q): %s", userID, "channel_link", err))
 			msg.Text = unavailableAnswer
 		} else {
 			msg.Text = fmt.Sprintf(notSubscribeAnswerTemplate, chatLink)
@@ -188,7 +188,6 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 
 		return nil
 	}
-
 	switch receivedMessage.Text {
 	case startCommand:
 		err := b.handleStartCommand(userName, chatID)
@@ -215,11 +214,10 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 		return nil
 
 	case listTorrentCommand:
-		err := b.handleListTorrentCommand(userName, chatID)
+		err := b.handleListTorrentCommand(userName, chatID, userID) // Передача userID
 		if err != nil {
 			return fmt.Errorf("b.handleListTorrentCommand(%q, %d): %w", userName, chatID, err)
 		}
-
 		return nil
 
 	default:

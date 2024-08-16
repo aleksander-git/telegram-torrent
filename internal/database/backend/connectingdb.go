@@ -50,10 +50,14 @@ func (d *Database) GetTorrent(ctx context.Context, torrentLink string) (Torrent,
 	return d.Queries.GetTorrent(ctx, torrentLink)
 }
 
-func (d *Database) GetTorrents(ctx context.Context) ([]Torrent, error) {
-	return d.Queries.GetUserTorrents(ctx, 0)
+func (d *Database) GetTorrents(ctx context.Context, userID int64) ([]Torrent, error) {
+	return d.Queries.GetUserTorrents(ctx, userID)
 }
 
-func (d *Database) GetSetting(ctx context.Context, key string) (string, error) {
-	return d.Queries.GetSetting(ctx, GetSettingParams{})
+func (d *Database) GetSetting(ctx context.Context, userID int64, key string) (string, error) {
+	params := GetSettingParams{
+		UserID: sql.NullInt64{Int64: userID, Valid: true},
+		Name:   key,
+	}
+	return d.Queries.GetSetting(ctx, params)
 }
