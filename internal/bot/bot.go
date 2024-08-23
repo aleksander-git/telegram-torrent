@@ -21,6 +21,8 @@ type DBInterface interface {
 	GetUser(ctx context.Context, id int64) (backend.User, error)
 	AddTorrent(ctx context.Context, arg backend.AddTorrentParams) error
 	GetTorrent(ctx context.Context, torrentLink string) (backend.Torrent, error)
+	GetTorrents(ctx context.Context, userID int64) ([]backend.Torrent, error)
+	GetSetting(ctx context.Context, userID int64, key string) (string, error)
 }
 
 func New(token string, logger *slog.Logger, db DBInterface) (*Bot, error) {
