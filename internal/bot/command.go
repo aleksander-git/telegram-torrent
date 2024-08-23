@@ -138,7 +138,8 @@ func (b *Bot) handleAddingNewTorrent(userName string, chatID int64, link string)
 			TimeAdded:   time.Now(),
 		}
 		if err := b.db.AddTorrent(ctx, addTorrentParams); err != nil {
-			b.logger.Error(fmt.Sprintf("b.handleAddingNewTorrent(%q, %d, %q): %s", userName, chatID, link, err))
+			wrappedErr := fmt.Errorf("adding torrent failed for user %q in chat %d, link %q: %w", userName, chatID, link, err)
+			b.logger.Error(wrappedErr.Error())
 			msg.Text = unavailableAnswer
 		} else {
 			delete(b.usersLastCommand, userName)
@@ -214,7 +215,7 @@ func (b *Bot) handleMessage(receivedMessage *tgbotapi.Message) error {
 		return nil
 
 	case listTorrentCommand:
-		err := b.handleListTorrentCommand(userName, chatID, userID) // Передача userID
+		err := b.handleListTorrentCommand(userName, chatID, userID)
 		if err != nil {
 			return fmt.Errorf("b.handleListTorrentCommand(%q, %d): %w", userName, chatID, err)
 		}

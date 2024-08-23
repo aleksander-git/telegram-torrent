@@ -18,7 +18,7 @@ func NewDatabase(connectionString string) (*Database, error) {
 		return nil, err
 	}
 
-	// Проверка соединения с базой данных
+	// Checking the database connection
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func NewDatabase(connectionString string) (*Database, error) {
 	}, nil
 }
 
-// Метод для закрытия соединения с базой данных
+// Method for closing database connection
 func (d *Database) Close() error {
 	return d.db.Close()
 }
