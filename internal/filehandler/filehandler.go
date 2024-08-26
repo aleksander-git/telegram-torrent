@@ -3,6 +3,7 @@ package filehandler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path"
@@ -10,6 +11,10 @@ import (
 
 	"github.com/aleksander-git/telegram-torrent/internal/database/backend"
 	"github.com/anacrolix/torrent"
+)
+
+var (
+	ErrMaxSize = errors.New("torrent size is too big")
 )
 
 type Loader interface {
@@ -34,13 +39,11 @@ type Uploader interface {
 	) (messageID int64, err error)
 }
 
-type TorrentProvider interface {
+type Repository interface {
 	GetFirstUnstartedTorrent(
 		ctx context.Context,
 	) (backend.Torrent, error)
-}
 
-type TorrentStateUpdater interface {
 	UpdateTorrentMessageID(
 		ctx context.Context,
 		arg backend.UpdateTorrentMessageIDParams,
@@ -68,8 +71,7 @@ type FileHandler struct {
 	loader   Loader
 	uploader Uploader
 
-	torrentProvider TorrentProvider
-	torrentUpdater  TorrentStateUpdater
+	repository Repository
 
 	loadTickInterval time.Duration
 	onLoadTick       func(ctx context.Context, magnetUri string, totalBytes, bytesCompleted int64)
@@ -77,32 +79,31 @@ type FileHandler struct {
 	loadDir      string
 	targetDomain string
 
-	done chan struct{}
+	maxTorrentSize int64
 }
 
 func New(
 	log *slog.Logger,
 	loader Loader,
 	uploader Uploader,
-	torrentProvider TorrentProvider,
-	torrentUpdater TorrentStateUpdater,
+	repository Repository,
 
 	loadTickInterval time.Duration,
 	onLoadTick func(ctx context.Context, magnetUri string, totalBytes, bytesCompleted int64),
 	loadDir string,
 	targetDomain string,
+	maxTorrentSize int64,
 ) *FileHandler {
 	return &FileHandler{
 		log:              log,
 		loader:           loader,
 		uploader:         uploader,
-		torrentProvider:  torrentProvider,
-		torrentUpdater:   torrentUpdater,
+		repository:       repository,
 		loadTickInterval: loadTickInterval,
 		onLoadTick:       onLoadTick,
 		loadDir:          loadDir,
 		targetDomain:     targetDomain,
-		done:             make(chan struct{}),
+		maxTorrentSize:   maxTorrentSize,
 	}
 }
 
@@ -119,9 +120,6 @@ func (h *FileHandler) Run(ctx context.Context, scanInterval time.Duration) {
 			case <-ctx.Done():
 				log.Error("context error received", slog.String("error", ctx.Err().Error()))
 				return
-			case <-h.done:
-				log.Debug("shutdown filehandler")
-				return
 			case <-ticker.C:
 				go func() {
 					err := h.handle(ctx)
@@ -134,37 +132,45 @@ func (h *FileHandler) Run(ctx context.Context, scanInterval time.Duration) {
 	}()
 }
 
-func (h *FileHandler) Close() {
-	close(h.done)
-}
-
-func (h *FileHandler) handle(ctx context.Context) (err error) {
-	const src = "FileHandler.Handle"
-	log := h.log.With(slog.String("src", src))
-
-	var magnetUri string
-
-	defer func() {
-		if err != nil && magnetUri != "" {
+func (h *FileHandler) handle(ctx context.Context) error {
+	magnetUri, torrentFile, err := h.loadTorrent(ctx)
+	if err != nil {
+		if magnetUri != "" {
 			statusErr := h.torrentError(ctx, magnetUri, err)
 			if statusErr != nil {
 				err = fmt.Errorf("h.torrentError(ctx, %q, %w): %w", magnetUri, err, statusErr)
 			}
 		}
-	}()
-
-	unstartedTorrent, err := h.torrentProvider.GetFirstUnstartedTorrent(ctx)
-	if err != nil {
-		return fmt.Errorf("h.torrentProvider.GetFirstUnstartedTorrent(ctx): %w", err)
+		return fmt.Errorf("failed to load torrent: %w", err)
 	}
 
-	magnetUri = unstartedTorrent.TorrentLink
+	err = h.uploadTorrent(ctx, magnetUri, torrentFile.Info().BestName())
+	if err != nil {
+		statusErr := h.torrentError(ctx, magnetUri, err)
+		if statusErr != nil {
+			err = fmt.Errorf("h.torrentError(ctx, %q, %w): %w", magnetUri, err, statusErr)
+		}
+		return fmt.Errorf("failed to upload torrent: %w", err)
+	}
 
-	log.Debug("handle torrent", slog.String("link", magnetUri))
+	return nil
+}
+
+func (h *FileHandler) loadTorrent(ctx context.Context) (string, *torrent.Torrent, error) {
+	unstartedTorrent, err := h.repository.GetFirstUnstartedTorrent(ctx)
+	if err != nil {
+		return "", nil, fmt.Errorf("h.torrentProvider.GetFirstUnstartedTorrent(ctx): %w", err)
+	}
+
+	magnetUri := unstartedTorrent.TorrentLink
 
 	torrentFile, err := h.loader.Torrent(ctx, magnetUri)
 	if err != nil {
-		return fmt.Errorf("h.loader.Torrent(ctx, %q): %w", magnetUri, err)
+		return magnetUri, nil, fmt.Errorf("h.loader.Torrent(ctx, %q): %w", magnetUri, err)
+	}
+
+	if torrentFile.Info().Length >= h.maxTorrentSize {
+		return magnetUri, nil, ErrMaxSize
 	}
 
 	err = h.preLoadUpdateTorrentState(
@@ -175,7 +181,7 @@ func (h *FileHandler) handle(ctx context.Context) (err error) {
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to update torrent %q status: %w", magnetUri, err)
+		return magnetUri, nil, fmt.Errorf("failed to update torrent %q status: %w", magnetUri, err)
 	}
 
 	_, err = h.loader.LoadTorrent(
@@ -188,10 +194,14 @@ func (h *FileHandler) handle(ctx context.Context) (err error) {
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to load torrent: %w", err)
+		return magnetUri, nil, fmt.Errorf("failed to load torrent: %w", err)
 	}
 
-	filePath := path.Join(h.loadDir, torrentFile.Info().BestName())
+	return magnetUri, torrentFile, nil
+}
+
+func (h *FileHandler) uploadTorrent(ctx context.Context, magnetUri string, name string) error {
+	filePath := path.Join(h.loadDir, name)
 	messageID, err := h.uploader.Upload(ctx, filePath, h.targetDomain)
 	if err != nil {
 		return fmt.Errorf("h.uploader.Upload(ctx, %q, %q): %w", filePath, h.targetDomain, err)
@@ -211,7 +221,7 @@ func (h *FileHandler) preLoadUpdateTorrentState(
 	name string,
 	size int64,
 ) error {
-	err := h.torrentUpdater.UpdateTorrentName(ctx, backend.UpdateTorrentNameParams{
+	err := h.repository.UpdateTorrentName(ctx, backend.UpdateTorrentNameParams{
 		TorrentLink: magnerUri,
 		Name:        sql.NullString{String: name, Valid: true},
 	})
@@ -220,7 +230,7 @@ func (h *FileHandler) preLoadUpdateTorrentState(
 		return fmt.Errorf("h.torrentUpdater.UpdateTorrentName(ctx, %q, %q): %w", magnerUri, name, err)
 	}
 
-	err = h.torrentUpdater.UpdateTorrentSize(ctx, backend.UpdateTorrentSizeParams{
+	err = h.repository.UpdateTorrentSize(ctx, backend.UpdateTorrentSizeParams{
 		TorrentLink: magnerUri,
 		Size:        sql.NullInt64{Int64: size, Valid: true},
 	})
@@ -229,7 +239,7 @@ func (h *FileHandler) preLoadUpdateTorrentState(
 		return fmt.Errorf("h.torrentUpdater.UpdateTorrentSize(ctx, %q, %d): %w", magnerUri, size, err)
 	}
 
-	err = h.torrentUpdater.UpdateTorrentStatus(ctx, backend.UpdateTorrentStatusParams{
+	err = h.repository.UpdateTorrentStatus(ctx, backend.UpdateTorrentStatusParams{
 		TorrentLink: magnerUri,
 		TimeStarted: sql.NullTime{Time: time.Now(), Valid: true},
 	})
@@ -246,7 +256,7 @@ func (h *FileHandler) postLoadUpdateTorrentState(
 	magnerUri string,
 	messageID int64,
 ) error {
-	err := h.torrentUpdater.UpdateTorrentMessageID(ctx, backend.UpdateTorrentMessageIDParams{
+	err := h.repository.UpdateTorrentMessageID(ctx, backend.UpdateTorrentMessageIDParams{
 		TorrentLink: magnerUri,
 		MessageID:   sql.NullInt64{Int64: messageID, Valid: true},
 	})
@@ -254,7 +264,7 @@ func (h *FileHandler) postLoadUpdateTorrentState(
 		return fmt.Errorf("h.torrentUpdater.UpdateTorrentMessageID(ctx, %q, %d): %w", magnerUri, messageID, err)
 	}
 
-	err = h.torrentUpdater.UpdateTorrentStatus(ctx, backend.UpdateTorrentStatusParams{
+	err = h.repository.UpdateTorrentStatus(ctx, backend.UpdateTorrentStatusParams{
 		TorrentLink:  magnerUri,
 		TimeFinished: sql.NullTime{Time: time.Now(), Valid: true},
 	})
@@ -268,9 +278,10 @@ func (h *FileHandler) postLoadUpdateTorrentState(
 
 func (h *FileHandler) torrentError(ctx context.Context, magnetUri string, torrentErr error) error {
 	if torrentErr != nil {
-		err := h.torrentUpdater.UpdateTorrentStatus(ctx, backend.UpdateTorrentStatusParams{
-			TorrentLink: magnetUri,
-			Error:       sql.NullString{String: torrentErr.Error(), Valid: true},
+		err := h.repository.UpdateTorrentStatus(ctx, backend.UpdateTorrentStatusParams{
+			TimeFinished: sql.NullTime{Time: time.Now(), Valid: true},
+			TorrentLink:  magnetUri,
+			Error:        sql.NullString{String: torrentErr.Error(), Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("h.torrentUpdater.UpdateTorrentStatus(ctx, %q, %w): %w", magnetUri, torrentErr, err)

@@ -114,14 +114,11 @@ func (l *Loader) Torrent(
 		return nil, fmt.Errorf("l.client.AddMagnet(%q): %w", magnetUri, err)
 	}
 
-	for processing := true; processing; {
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("failed to get info: %w", ctx.Err())
-		case <-torrentFile.GotInfo():
-			fmt.Println("got info", torrentFile.Info().Length)
-			processing = false
-		}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("failed to get info: %w", ctx.Err())
+	case <-torrentFile.GotInfo():
+		fmt.Println("got info", torrentFile.Info().Length)
 	}
 
 	return torrentFile, nil

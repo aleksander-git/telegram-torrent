@@ -2,7 +2,6 @@ package loader_test
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -44,11 +43,11 @@ func TestLoader_Load(t *testing.T) {
 			require.NoError(t, err, "failed to get file from uri %q", test.uri)
 
 			size, err := l.LoadTorrent(ctx, torrentFile, 100*time.Millisecond, func(_ context.Context, totalBytes, bytesCompleted int64) {
-				fmt.Printf("downloaded %d bytes of %d\n", bytesCompleted, totalBytes)
+				t.Logf("downloaded %d bytes of %d\n", bytesCompleted, totalBytes)
 			})
 			require.NoError(t, err, "failed to download file from uri %q", test.uri)
 
-			fmt.Printf("successfully downloaded file %s with %d bytes\n", torrentFile.Info().BestName(), size)
+			t.Logf("successfully downloaded file %s with %d bytes\n", torrentFile.Info().BestName(), size)
 
 			errs := client.Close()
 			if len(errs) > 0 {

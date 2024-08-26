@@ -2,7 +2,6 @@ package uploader_test
 
 import (
 	"context"
-	"fmt"
 	stdLog "log"
 	"log/slog"
 	"os"
@@ -80,7 +79,7 @@ func TestUploader_Upload(t *testing.T) {
 			id, err := uploader.Upload(context.Background(), test.filePath, test.target)
 			require.NoError(t, err)
 
-			fmt.Println("messsage sent", id)
+			t.Log("messsage sent", id)
 		})
 	}
 }
