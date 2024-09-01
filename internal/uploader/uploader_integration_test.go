@@ -2,10 +2,6 @@ package uploader_test
 
 import (
 	"context"
-	"github.com/aleksander-git/telegram-torrent/internal/gotdclient"
-	"github.com/gotd/td/telegram/message"
-	tduploader "github.com/gotd/td/telegram/uploader"
-	"github.com/gotd/td/tg"
 	stdLog "log"
 	"log/slog"
 	"os"
@@ -13,7 +9,11 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/aleksander-git/telegram-torrent/internal/gotdclient"
 	"github.com/aleksander-git/telegram-torrent/internal/uploader"
+	"github.com/gotd/td/telegram/message"
+	tduploader "github.com/gotd/td/telegram/uploader"
+	"github.com/gotd/td/tg"
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/require"
 )
@@ -76,8 +76,10 @@ func TestUploader_Upload(t *testing.T) {
 				t.Skip()
 			}
 
-			err = uploader.Upload(context.Background(), test.filePath, test.target)
+			id, err := uploader.Upload(context.Background(), test.filePath, test.target)
 			require.NoError(t, err)
+
+			t.Log("messsage sent", id)
 		})
 	}
 }
