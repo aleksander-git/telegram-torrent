@@ -133,14 +133,20 @@ func (h *FileHandler) Run(ctx context.Context, scanInterval time.Duration) {
 }
 
 func (h *FileHandler) handle(ctx context.Context) error {
-	magnetUri, torrentFile, err := h.loadTorrent(ctx)
+	unstartedTorrent, err := h.repository.GetFirstUnstartedTorrent(ctx)
 	if err != nil {
-		if magnetUri != "" {
-			statusErr := h.torrentError(ctx, magnetUri, err)
-			if statusErr != nil {
-				err = fmt.Errorf("h.torrentError(ctx, %q, %w): %w", magnetUri, err, statusErr)
-			}
+		return fmt.Errorf("h.torrentProvider.GetFirstUnstartedTorrent(ctx): %w", err)
+	}
+
+	magnetUri := unstartedTorrent.TorrentLink
+
+	torrentFile, err := h.loadTorrent(ctx, magnetUri)
+	if err != nil {
+		statusErr := h.torrentError(ctx, magnetUri, err)
+		if statusErr != nil {
+			err = fmt.Errorf("h.torrentError(ctx, %q, %w): %w", magnetUri, err, statusErr)
 		}
+
 		return fmt.Errorf("failed to load torrent: %w", err)
 	}
 
@@ -150,27 +156,21 @@ func (h *FileHandler) handle(ctx context.Context) error {
 		if statusErr != nil {
 			err = fmt.Errorf("h.torrentError(ctx, %q, %w): %w", magnetUri, err, statusErr)
 		}
+
 		return fmt.Errorf("failed to upload torrent: %w", err)
 	}
 
 	return nil
 }
 
-func (h *FileHandler) loadTorrent(ctx context.Context) (string, *torrent.Torrent, error) {
-	unstartedTorrent, err := h.repository.GetFirstUnstartedTorrent(ctx)
-	if err != nil {
-		return "", nil, fmt.Errorf("h.torrentProvider.GetFirstUnstartedTorrent(ctx): %w", err)
-	}
-
-	magnetUri := unstartedTorrent.TorrentLink
-
+func (h *FileHandler) loadTorrent(ctx context.Context, magnetUri string) (*torrent.Torrent, error) {
 	torrentFile, err := h.loader.Torrent(ctx, magnetUri)
 	if err != nil {
-		return magnetUri, nil, fmt.Errorf("h.loader.Torrent(ctx, %q): %w", magnetUri, err)
+		return nil, fmt.Errorf("h.loader.Torrent(ctx, %q): %w", magnetUri, err)
 	}
 
 	if torrentFile.Info().Length >= h.maxTorrentSize {
-		return magnetUri, nil, ErrMaxSize
+		return nil, ErrMaxSize
 	}
 
 	err = h.preLoadUpdateTorrentState(
@@ -181,7 +181,7 @@ func (h *FileHandler) loadTorrent(ctx context.Context) (string, *torrent.Torrent
 	)
 
 	if err != nil {
-		return magnetUri, nil, fmt.Errorf("failed to update torrent %q status: %w", magnetUri, err)
+		return nil, fmt.Errorf("failed to update torrent %q status: %w", magnetUri, err)
 	}
 
 	_, err = h.loader.LoadTorrent(
@@ -194,10 +194,10 @@ func (h *FileHandler) loadTorrent(ctx context.Context) (string, *torrent.Torrent
 	)
 
 	if err != nil {
-		return magnetUri, nil, fmt.Errorf("failed to load torrent: %w", err)
+		return nil, fmt.Errorf("failed to load torrent: %w", err)
 	}
 
-	return magnetUri, torrentFile, nil
+	return torrentFile, nil
 }
 
 func (h *FileHandler) uploadTorrent(ctx context.Context, magnetUri string, name string) error {
